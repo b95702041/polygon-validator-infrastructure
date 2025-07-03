@@ -1,12 +1,22 @@
 # Polygon Validator Infrastructure
 
-Setting up a Polygon validator and data node on AWS using Terraform.
+A complete AWS infrastructure setup for Polygon blockchain nodes using Terraform.
 
-## Project Status
-🚧 Work in Progress
+## 🎯 Project Goals
+Demonstrate blockchain infrastructure skills.
 
-## Goals
-- Deploy Polygon validator node
-- Deploy Polygon data node  
-- Use Terraform for AWS infrastructure
-- Implement monitoring and security
+## ✅ Completed Infrastructure
+- **AWS EC2 Instance**: t3.medium with proper security configuration
+- **Terraform IaC**: Complete infrastructure as code setup
+- **SSH Access**: Secure key-based authentication
+- **Security Groups**: Properly configured network access
+- **Git Repository**: Professional project structure with .gitignore
+
+## 🔧 Technical Stack
+- **Cloud**: AWS EC2
+- **IaC**: Terraform
+- **Blockchain**: Polygon Bor client
+- **OS**: Amazon Linux 2
+- **Languages**: Go 1.21, Bash scripting
+
+## 📁 Project Structure
