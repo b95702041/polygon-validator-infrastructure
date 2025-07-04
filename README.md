@@ -162,7 +162,21 @@ Port 1317 (TCP)   - Heimdall REST API
 The initial setup faced P2P connection failures due to:
 - Empty seeds configuration in Heimdall
 - Outdated seed nodes in community documentation
+- **Amoy testnet infrastructure limitations** - insufficient active peers
 - Default peer discovery settings too restrictive
+
+### Network Migration: Amoy → Mainnet
+Initially attempted deployment on **Amoy testnet** but encountered:
+- ❌ **Limited peer discovery** - Few active seed nodes
+- ❌ **Consensus RPC timeouts** - Testnet infrastructure gaps  
+- ❌ **Inconsistent connectivity** - Mumbai testnet deprecated (April 2024)
+- ❌ **Auth failures** - Mismatched node identities in testnet seeds
+
+**Solution**: Migrated to **Polygon Mainnet** for:
+- ✅ **Robust peer discovery** with hundreds of active nodes
+- ✅ **Stable infrastructure** for reliable syncing
+- ✅ **Production-ready environment** for complete validator experience
+- ✅ **Consistent connectivity** - Well-maintained mainnet infrastructure
 
 ### Solution Implemented
 ✅ **Working persistent peers** instead of outdated seeds  
@@ -172,12 +186,12 @@ The initial setup faced P2P connection failures due to:
 ✅ **Complete automation** in install script  
 ✅ **Bootstrap deployment** to overcome AWS user_data limits
 
-### Working Peer Configuration
+### Working Peer Configuration (Updated 2025-07-03)
 ```toml
-# Heimdall - Working persistent peers (tested 2025-07-03)
+# Heimdall - Working persistent peers
 persistent_peers = "7f3049e88ac7f820fd86d9120506aaec0dc54b27@34.89.75.187:26656,2d5484feef4257e56ece025633a6ea132d8cadca@35.246.99.203:26656,72a83490309f9f63fdca3a0bef16c290e5cbb09c@35.246.95.65:26656"
 
-# Bor - Working bootnodes (tested 2025-07-03)
+# Bor - Working bootnodes
 bootnodes = [
     "enode://e4fb013061eba9a2c6fb0a41bbd4149f4808f0fb7e88ec55d7163f19a6f02d64d0ce5ecc81528b769ba552a7068057432d44ab5e9e42842aff5b4709aa2c3f3b@34.89.75.187:30303",
     "enode://a49da6300403cf9b31e30502eb22c142ba4f77c9dda44990bccce9f2121c3152487ee95ee55c6b92d4cdce77845e40f59fd927da70ea91cf935b23e262236d75@34.142.43.249:30303",
@@ -185,6 +199,8 @@ bootnodes = [
     "enode://a0bc4dd2b59370d5a375a7ef9ac06cf531571005ae8b2ead2e9aaeb8205168919b169451fb0ef7061e0d80592e6ed0720f559bd1be1c4efb6e6c4381f1bdb986@35.246.99.203:30303"
 ]
 ```
+
+**⚠️ Note**: These peer addresses are hardcoded and tested as of July 2025. If deployment fails due to peer connectivity issues, update the peer lists in `terraform/full-install-polygon.sh` with current working peers from [Polygon Documentation](https://docs.polygon.technology/pos/reference/seed-and-bootnodes/).
 
 ## 📊 Performance Metrics
 
@@ -395,120 +411,21 @@ To Become Validator:
 - **Transaction fees**: Small portion of network fees
 - **Checkpoint rewards**: For validating state transitions
 
-## 🔮 Future Enhancements
-
-### Planned Improvements
-- **Multi-Node Setup**: Implement sentry + validator architecture
-- **Monitoring Stack**: Grafana/Prometheus integration
-- **High Availability**: Load balancing and failover configuration
-- **Security Hardening**: Advanced firewall rules and intrusion detection
-- **Performance Optimization**: Custom hardware configurations and tuning
-
-### Scaling Considerations
-- **Snapshot Integration**: Faster initial sync with trusted snapshots
-- **Automated Upgrades**: CI/CD pipeline for node updates
-- **Multi-Region Deployment**: Geographic distribution for resilience
-- **Backup Strategy**: Automated backup and disaster recovery
-
-## 🎓 Key Lessons Learned
-
-### Technical Insights
-- **Manual testing was essential** for identifying working peers
-- **Iterative config updates** helped solve connection issues
-- **Source compilation** bypassed dependency conflicts
-- **Proper service dependencies** ensure reliable operation
-- **Bootstrap pattern** overcomes cloud deployment limitations
-
-### Cross-Platform Development
-- **Terraform works everywhere** - Same infrastructure code
-- **PowerShell vs Bash** - Minor syntax differences only
-- **Cloud deployment** - Operating system agnostic
-- **Git workflow** - Identical across platforms
-
-### Automation Priorities
-1. **Connectivity testing** before applying configuration
-2. **Template-based configs** with working peers as variables
-3. **Systematic service creation** with proper dependencies
-4. **Automated verification** of setup success
-5. **Bootstrap deployment** for maintainability
-
 ## 📚 Resources
 
 ### Official Documentation
 - [Polygon Validator Documentation](https://docs.polygon.technology/pos/get-started/becoming-a-validator/)
 - [Polygon Node Setup Guide](https://docs.polygon.technology/pos/how-to/full-node-deployment/)
-- [Bor Documentation](https://docs.polygon.technology/pos/reference/bor/)
-
-### Community Resources
-- [Polygon Community Forum](https://forum.polygon.technology/)
-- [Polygon Discord](https://discord.gg/polygon)
-- [Polygon GitHub](https://github.com/maticnetwork)
+- [Polygon Seed and Bootnodes](https://docs.polygon.technology/pos/reference/seed-and-bootnodes/)
 
 ### Development Tools
 - [Terraform Documentation](https://www.terraform.io/docs)
 - [AWS CLI](https://aws.amazon.com/cli/)
-- [Visual Studio Code](https://code.visualstudio.com/) - Works on all platforms
-
-## 🤝 Contributing
-
-### Development Environment
-Works on any platform with:
-- Terraform installed
-- AWS CLI configured
-- SSH client available
-- Git for version control
-
-### Contributing Steps
-1. Fork the repository
-2. Create a feature branch
-3. Test on your platform (Windows/Linux/macOS)
-4. Update documentation for cross-platform compatibility
-5. Submit a pull request
-
-### Testing
-```bash
-# Test deployment
-terraform plan
-terraform apply
-
-# Test connectivity
-ssh -i polygon-key ec2-user@<PUBLIC_IP>
-
-# Test automation
-~/check-polygon-status.sh
-```
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
-
-- Polygon team for comprehensive documentation
-- Community contributors for troubleshooting insights
-- AWS for reliable cloud infrastructure
-- Terraform for cross-platform infrastructure automation
-- The open-source community for blockchain innovation
-
 ---
 
-**Note**: This project demonstrates advanced blockchain infrastructure capabilities that work across all major operating systems. The complete solution includes Infrastructure as Code, security best practices, and production-ready automation that can be deployed from Windows, Linux, or macOS environments while running on AWS cloud infrastructure.
-
-## 💡 Platform-Specific Tips
-
-### Windows Users
-- Use PowerShell (not Command Prompt)
-- Git Bash works for SSH connections
-- WSL2 provides full Linux compatibility if needed
-
-### Linux Users
-- Most commands work as-is
-- Package managers vary by distribution
-- Consider using tmux for long-running sessions
-
-### macOS Users
-- Homebrew simplifies tool installation
-- Terminal.app or iTerm2 work well
-- SSH keys work identically to Linux
-
-The beauty of this setup is that **regardless of your local operating system**, you get the same reliable Polygon validator running on AWS Linux infrastructure! 🚀
+**Note**: This project demonstrates production-ready Polygon validator deployment with automated P2P connection fixes. The complete solution includes Infrastructure as Code, security best practices, and cross-platform compatibility.
