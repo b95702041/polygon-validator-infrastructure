@@ -201,7 +201,7 @@ print_status "Configuring Polygon Edge..."
 
 # Initialize secrets
 print_status "Initializing node secrets"
-sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon
+sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
 
 # Create genesis file
 print_status "Creating genesis configuration"
