@@ -17,8 +17,8 @@ print_status "Starting Enhanced Polygon Installation"
 # Update system with conflict resolution
 print_status "Updating system packages"
 sudo dnf update -y --allowerasing
-sudo dnf groupinstall -y "Development Tools"
-sudo dnf install -y wget curl git jq nc
+sudo dnf groupinstall -y --allowerasing "Development Tools"
+sudo dnf install -y --allowerasing wget curl git jq nc
 
 # Install Go
 print_status "Installing Go 1.24.4"
