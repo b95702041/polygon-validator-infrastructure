@@ -51,7 +51,7 @@ resource "aws_security_group" "polygon_sg" {
     from_port   = 26657
     to_port     = 26657
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] 
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # Bor RPC port (optional - for monitoring)
@@ -83,7 +83,7 @@ resource "aws_instance" "polygon_node" {
   vpc_security_group_ids = [aws_security_group.polygon_sg.id]
   
   # Automated installation script
-  user_data = base64encode(file("${path.module}/install-polygon.sh"))
+  user_data = base64encode(templatefile("${path.module}/install-polygon.sh", {}))
   
   # Increase root volume size for blockchain data
   root_block_device {
