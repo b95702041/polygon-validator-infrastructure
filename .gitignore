@@ -5,6 +5,53 @@
 *.tfvars
 .terraform.lock.hcl
 
+# SSH Keys and Certificates
+*.pem
+*.key
+*_key
+*-key
+polygon-key
+id_rsa
+id_ed25519
+id_dsa
+*.p12
+*.pfx
+
+# AWS and Cloud Provider credentials
+*.aws
+.aws/
+credentials
+config
+
+# Environment and configuration files
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+logs/
+*.out
+
 # OS files
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
