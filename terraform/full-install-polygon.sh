@@ -65,14 +65,34 @@ sudo mkdir -p /var/lib/polygon
 sudo mkdir -p /var/log/polygon
 sudo mkdir -p /etc/polygon
 
-# Download and install Polygon Edge binary
-print_status "Downloading Polygon Edge binary"
+# Build Polygon Edge from source (more reliable than binary download)
+print_status "Building Polygon Edge from source"
 cd /tmp
-POLYGON_VERSION="v1.3.1"
-wget -q "https://github.com/0xPolygon/polygon-edge/releases/download/${POLYGON_VERSION}/polygon-edge_${POLYGON_VERSION}_linux_amd64.tar.gz"
-tar -xzf "polygon-edge_${POLYGON_VERSION}_linux_amd64.tar.gz"
+if [ ! -d "polygon-edge" ]; then
+    git clone https://github.com/0xPolygon/polygon-edge.git
+fi
+cd polygon-edge
+
+# Checkout a stable version
+git checkout develop
+
+# Build the binary
+print_status "Compiling Polygon Edge binary"
+go build -o polygon-edge main.go
+
+# Install the binary
+print_status "Installing Polygon Edge binary"
 sudo cp polygon-edge /usr/local/bin/
 sudo chmod +x /usr/local/bin/polygon-edge
+
+# Verify installation
+print_status "Verifying Polygon Edge installation"
+if /usr/local/bin/polygon-edge version; then
+    print_status "✅ Polygon Edge installed successfully"
+else
+    print_error "❌ Polygon Edge installation failed"
+    exit 1
+fi
 
 # Set ownership
 print_status "Setting up permissions"
