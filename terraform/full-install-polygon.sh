@@ -230,7 +230,10 @@ sudo -u polygon heimdalld init --chain-id=137 --home=/var/lib/polygon/heimdall
 
 # Download Heimdall genesis
 print_status "Downloading Heimdall genesis file..."
-sudo -u polygon wget -q https://raw.githubusercontent.com/maticnetwork/launch/master/mainnet-v1/sentry/sentry/heimdall/config/genesis.json -O /var/lib/polygon/heimdall/config/genesis.json
+if ! run_with_timeout 60 "Download Heimdall genesis" sudo -u polygon wget -q https://raw.githubusercontent.com/maticnetwork/launch/master/mainnet-v1/sentry/sentry/heimdall/config/genesis.json -O /var/lib/polygon/heimdall/config/genesis.json; then
+    print_error "Failed to download Heimdall genesis file"
+    exit 1
+fi
 
 # Configure Heimdall with working peers
 print_status "Configuring Heimdall with working peer connections..."
@@ -608,14 +611,24 @@ sudo -u polygon mkdir -p /var/lib/polygon/bor/keystore
 
 # Download Bor genesis
 print_status "Downloading Bor genesis file..."
-sudo -u polygon wget -q https://raw.githubusercontent.com/maticnetwork/bor/master/builder/files/genesis-mainnet-v1.json -O /var/lib/polygon/bor/genesis.json
+if ! run_with_timeout 60 "Download Bor genesis" sudo -u polygon wget -q https://raw.githubusercontent.com/maticnetwork/bor/master/builder/files/genesis-mainnet-v1.json -O /var/lib/polygon/bor/genesis.json; then
+    print_error "Failed to download Bor genesis file"
+    exit 1
+fi
 
 # Initialize Bor with genesis
-sudo -u polygon /usr/local/bin/bor --datadir /var/lib/polygon/bor init /var/lib/polygon/bor/genesis.json
+print_status "Initializing Bor with genesis file..."
+if ! run_with_timeout 120 "Initialize Bor" sudo -u polygon /usr/local/bin/bor --datadir /var/lib/polygon/bor init /var/lib/polygon/bor/genesis.json; then
+    print_error "Failed to initialize Bor with genesis"
+    exit 1
+fi
 
 # Configure Bor with working bootnodes
 print_status "Configuring Bor with working bootnode connections..."
-sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<EOF
+if ! sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<EOF; then
+    print_error "Failed to create Bor configuration"
+    exit 1
+fi
 [pprof]
   addr = "127.0.0.1"
   port = 6060
@@ -737,7 +750,11 @@ EOF
 print_status "📝 Creating systemd services..."
 
 # Heimdall service
-sudo tee /etc/systemd/system/heimdalld.service > /dev/null <<EOF
+print_status "Creating Heimdall systemd service..."
+if ! sudo tee /etc/systemd/system/heimdalld.service > /dev/null <<EOF; then
+    print_error "Failed to create Heimdall service"
+    exit 1
+fi
 [Unit]
 Description=Heimdall Daemon
 After=network.target
@@ -760,7 +777,11 @@ WantedBy=multi-user.target
 EOF
 
 # Heimdall REST service
-sudo tee /etc/systemd/system/heimdalld-rest.service > /dev/null <<EOF
+print_status "Creating Heimdall REST systemd service..."
+if ! sudo tee /etc/systemd/system/heimdalld-rest.service > /dev/null <<EOF; then
+    print_error "Failed to create Heimdall REST service"
+    exit 1
+fi
 [Unit]
 Description=Heimdall REST Server
 After=heimdalld.service
@@ -784,7 +805,11 @@ WantedBy=multi-user.target
 EOF
 
 # Bor service
-sudo tee /etc/systemd/system/bor.service > /dev/null <<EOF
+print_status "Creating Bor systemd service..."
+if ! sudo tee /etc/systemd/system/bor.service > /dev/null <<EOF; then
+    print_error "Failed to create Bor service"
+    exit 1
+fi
 [Unit]
 Description=Bor Service
 After=heimdalld-rest.service
@@ -811,7 +836,11 @@ EOF
 print_status "📋 Creating utility scripts..."
 
 # Main status script
-sudo tee /usr/local/bin/polygon-status > /dev/null <<'EOF'
+print_status "Creating polygon-status utility script..."
+if ! sudo tee /usr/local/bin/polygon-status > /dev/null <<'EOF'; then
+    print_error "Failed to create polygon-status script"
+    exit 1
+fi
 #!/bin/bash
 echo "=== Polygon PoS Node Status ==="
 echo ""
@@ -851,7 +880,11 @@ curl -s -X POST -H "Content-Type: application/json" \
 EOF
 
 # Individual log viewers
-sudo tee /usr/local/bin/polygon-logs > /dev/null <<'EOF'
+print_status "Creating polygon-logs utility script..."
+if ! sudo tee /usr/local/bin/polygon-logs > /dev/null <<'EOF'; then
+    print_error "Failed to create polygon-logs script"
+    exit 1
+fi
 #!/bin/bash
 case "$1" in
     "heimdall"|"h")
@@ -897,7 +930,11 @@ esac
 EOF
 
 # Restart script
-sudo tee /usr/local/bin/polygon-restart > /dev/null <<'EOF'
+print_status "Creating polygon-restart utility script..."
+if ! sudo tee /usr/local/bin/polygon-restart > /dev/null <<'EOF'; then
+    print_error "Failed to create polygon-restart script"
+    exit 1
+fi
 #!/bin/bash
 case "$1" in
     "heimdall"|"h")
@@ -943,7 +980,11 @@ esac
 EOF
 
 # Performance monitoring script
-sudo tee /usr/local/bin/polygon-monitor > /dev/null <<'EOF'
+print_status "Creating polygon-monitor utility script..."
+if ! sudo tee /usr/local/bin/polygon-monitor > /dev/null <<'EOF'; then
+    print_error "Failed to create polygon-monitor script"
+    exit 1
+fi
 #!/bin/bash
 echo "=== Polygon PoS Node Monitor ==="
 echo "Press Ctrl+C to exit"
@@ -1016,10 +1057,12 @@ done
 EOF
 
 # Make all scripts executable
+print_status "Making utility scripts executable..."
 sudo chmod +x /usr/local/bin/polygon-status
 sudo chmod +x /usr/local/bin/polygon-logs
 sudo chmod +x /usr/local/bin/polygon-restart
 sudo chmod +x /usr/local/bin/polygon-monitor
+print_status "✅ Utility scripts created and made executable"
 
 # Create log rotation
 print_status "Setting up log rotation..."
