@@ -85,10 +85,12 @@ resource "aws_instance" "polygon_node" {
   # Automated installation script
   user_data = base64encode(file("${path.module}/install-polygon.sh"))
   
-  # Increase root volume size for blockchain data
+  # Increase root volume size for builds, blockchain data, and growth
   root_block_device {
-    volume_size = 50  # 50GB for blockchain data
+    volume_size = 80  # 80GB for builds, blockchain data, and growth
     volume_type = "gp3"
+    encrypted   = true
+    delete_on_termination = true
   }
   
   tags = {
