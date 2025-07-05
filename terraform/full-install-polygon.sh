@@ -213,16 +213,13 @@ print_status "Configuring Polygon Edge..."
 print_status "Initializing node secrets"
 sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
 
-# Create genesis file with reward wallet
+# Create simple genesis file for hands-on learning
 print_status "Creating genesis configuration"
 sudo -u polygon /usr/local/bin/polygon-edge genesis \
     --dir /var/lib/polygon \
     --name "polygon-testnet" \
-    --pos \
-    --epoch-size 10 \
     --premine=0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000 \
-    --premine=0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000 \
-    --reward-wallet 0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6
+    --premine=0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000
 
 # Create configuration file
 print_status "Creating configuration file"
