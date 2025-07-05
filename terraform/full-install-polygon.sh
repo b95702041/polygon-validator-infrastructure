@@ -209,18 +209,29 @@ fi
 # Continue with configuration
 print_status "Configuring Polygon Edge..."
 
+# CHANGE 1: Clean up existing configuration files before creating new ones
+print_status "Cleaning up any existing configuration..."
+sudo rm -rf /var/lib/polygon/genesis.json
+sudo rm -rf /var/lib/polygon/consensus/
+sudo rm -rf /var/lib/polygon/trie/
+sudo rm -rf /var/lib/polygon/blockchain/
+
 # Initialize secrets with --insecure flag for local development
 print_status "Initializing node secrets"
 sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
 
-# Create simple genesis file for hands-on learning with IBFT consensus
+# CHANGE 2: Updated genesis creation with proper IBFT parameters and fixed premine format
 print_status "Creating genesis configuration"
 sudo -u polygon /usr/local/bin/polygon-edge genesis \
     --dir /var/lib/polygon \
     --name "polygon-testnet" \
+    --chain-id 1001 \
     --consensus ibft \
-    --premine=0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000 \
-    --premine=0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000
+    --ibft-validator-type bls \
+    --block-gas-limit 10000000 \
+    --block-time 2s \
+    --premine 0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000000 \
+    --premine 0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000000
 
 # Create configuration file
 print_status "Creating configuration file"
