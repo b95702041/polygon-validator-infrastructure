@@ -267,55 +267,6 @@ sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/pol
 
 **Note:** The `--insecure` flag stores keys locally on filesystem. Avoid in production.
 
-#### Problem: Genesis creation requires reward wallet
-**Error:**
-```
-reward wallet address must be defined
-a custom reward token must be defined when native ERC20 token is non-mintable
-```
-
-**Root Cause:** Default consensus is `polybft` (Proof of Stake) which requires reward configuration.
-
-**Solution:** Use simpler IBFT consensus for learning/development:
-
-```bash
-sudo -u polygon /usr/local/bin/polygon-edge genesis \
-    --dir /var/lib/polygon \
-    --name "polygon-edge-local" \
-    --chain-id 1001 \
-    --consensus ibft \
-    --ibft-validator-type bls \
-    --block-gas-limit 10000000 \
-    --block-time 2s \
-    --premine 0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000000
-```
-
-**Consensus Options:**
-- ✅ **IBFT** - Simple, no rewards needed, perfect for learning
-- ❌ **PolyBFT** - Complex, requires rewards/staking, production-focused
-
-#### Problem: Genesis file already exists
-**Error:**
-```
-genesis file at path (/var/lib/polygon) already exists
-```
-
-**Root Cause:** Previous installation attempts left configuration files that conflict with new genesis creation.
-
-**Solution:** Clean up existing configuration before creating new genesis:
-
-```bash
-# Clean up existing files
-sudo rm -rf /var/lib/polygon/genesis.json
-sudo rm -rf /var/lib/polygon/consensus/
-sudo rm -rf /var/lib/polygon/trie/
-sudo rm -rf /var/lib/polygon/blockchain/
-
-# Then proceed with secrets and genesis initialization
-sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
-sudo -u polygon /usr/local/bin/polygon-edge genesis --dir /var/lib/polygon --consensus ibft
-```
-
 #### Problem: curl-minimal conflicts with curl package
 **Error:**
 ```
