@@ -57,6 +57,73 @@ verify_binary() {
     fi
 }
 
+# Disk space management functions
+check_disk_space() {
+    local required_gb=$1
+    local mount_point=$2
+    local available_gb=$(df -BG "$mount_point" | tail -1 | awk '{print $4}' | sed 's/G//')
+    
+    if [ "$available_gb" -lt "$required_gb" ]; then
+        print_error "Insufficient disk space. Required: ${required_gb}GB, Available: ${available_gb}GB"
+        return 1
+    fi
+    print_status "✅ Sufficient disk space: ${available_gb}GB available"
+    return 0
+}
+
+cleanup_build_space() {
+    print_status "Cleaning up build space..."
+    # Clean Go caches
+    sudo rm -rf /tmp/go-build* /tmp/go-cache*
+    # Clean package manager cache
+    sudo dnf clean all
+    # Remove build artifacts from previous attempts
+    sudo rm -rf /tmp/heimdall /tmp/bor
+    # Remove downloaded files after use
+    sudo rm -rf /tmp/*.tar.gz
+    print_status "✅ Build space cleaned"
+}
+
+setup_build_environment() {
+    print_status "Setting up build environment..."
+    # Use /var/tmp instead of /tmp for larger cache
+    export GOCACHE=/var/tmp/go-cache-polygon
+    export GOMODCACHE=/var/tmp/go-mod-cache
+    mkdir -p $GOCACHE $GOMODCACHE
+    
+    # Set Git safe directories to avoid warnings
+    git config --global --add safe.directory /tmp/heimdall 2>/dev/null || true
+    git config --global --add safe.directory /tmp/bor 2>/dev/null || true
+    
+    print_status "✅ Build environment configured"
+}
+
+fix_build_permissions() {
+    local build_dir=$1
+    local owner=$2
+    print_status "Fixing permissions for $build_dir..."
+    sudo chown -R $owner:$owner "$build_dir"
+    print_status "✅ Permissions fixed for $build_dir"
+}
+
+build_with_progress() {
+    local component=$1
+    local build_cmd="$2"
+    local timeout_duration=$3
+    
+    print_status "Building $component (this may take 10-20 minutes)..."
+    print_status "💡 Tip: Monitor progress in another terminal with: ps aux | grep 'go build'"
+    print_status "💡 Or watch CPU usage with: top"
+    
+    if timeout $timeout_duration bash -c "$build_cmd"; then
+        print_status "✅ $component build completed successfully"
+        return 0
+    else
+        print_error "❌ $component build failed or timed out after ${timeout_duration}s"
+        return 1
+    fi
+}
+
 print_status "🚀 Starting Polygon PoS (Bor + Heimdall) Installation"
 
 # Update system with conflict resolution
@@ -79,8 +146,6 @@ echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee -a /etc/profile
 export PATH=$PATH:/usr/local/go/bin
 export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH/bin
-export GOCACHE=/tmp/go-cache
-mkdir -p $GOPATH $GOCACHE
 
 print_status "System setup completed ✅"
 
@@ -90,16 +155,21 @@ sudo useradd -r -s /bin/false polygon 2>/dev/null || true
 sudo mkdir -p /var/lib/polygon/{bor,heimdall} /var/log/polygon /etc/polygon
 sudo chown -R polygon:polygon /var/lib/polygon /var/log/polygon /etc/polygon
 
+# Prepare build environment
+check_disk_space 4 "/tmp" || exit 1
+cleanup_build_space
+setup_build_environment
+
 # Install Heimdall
 print_status "📦 Installing Heimdall (Consensus Layer)..."
 cd /tmp
-rm -rf heimdall
 
 if run_with_timeout 300 "Clone Heimdall" git clone --branch v1.0.7 --single-branch https://github.com/maticnetwork/heimdall.git; then
     cd heimdall
+    fix_build_permissions "/tmp/heimdall" "ec2-user"
     
-    # Build Heimdall with timeout
-    if run_with_timeout 900 "Build Heimdall" make build; then
+    # Build Heimdall with progress monitoring
+    if build_with_progress "Heimdall" "make build" 1200; then
         sudo cp build/heimdalld /usr/local/bin/
         sudo cp build/heimdallcli /usr/local/bin/
         sudo chmod +x /usr/local/bin/heimdall*
@@ -119,16 +189,20 @@ else
     exit 1
 fi
 
+# Clean up space after Heimdall build
+cleanup_build_space
+check_disk_space 3 "/tmp" || exit 1
+
 # Install Bor
 print_status "📦 Installing Bor (Execution Layer)..."
 cd /tmp
-rm -rf bor
 
 if run_with_timeout 300 "Clone Bor" git clone --branch v1.5.5 --single-branch https://github.com/maticnetwork/bor.git; then
     cd bor
+    fix_build_permissions "/tmp/bor" "ec2-user"
     
-    # Build Bor with timeout
-    if run_with_timeout 1200 "Build Bor" make bor; then
+    # Build Bor with progress monitoring and extended timeout
+    if build_with_progress "Bor" "make bor" 1800; then
         sudo cp build/bin/bor /usr/local/bin/
         sudo chmod +x /usr/local/bin/bor
         
@@ -146,6 +220,9 @@ else
     print_error "❌ Failed to clone Bor repository"
     exit 1
 fi
+
+# Final cleanup
+cleanup_build_space
 
 # Initialize Heimdall
 print_status "🔧 Configuring Heimdall..."
