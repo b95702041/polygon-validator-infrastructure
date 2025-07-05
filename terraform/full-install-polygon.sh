@@ -57,6 +57,11 @@ verify_polygon_binary() {
 install_via_go_install() {
     print_status "Attempting installation via go install..."
     
+    # Set Go environment variables
+    export GOCACHE=/tmp/go-cache
+    export GOPATH=/root/go
+    mkdir -p $GOCACHE $GOPATH
+    
     if run_with_timeout 600 "go install polygon-edge" go install github.com/0xPolygon/polygon-edge@develop; then
         # Find where go install put the binary
         local go_bin_path
@@ -98,6 +103,11 @@ install_via_source_build() {
     
     cd polygon-edge
     
+    # Set Go environment variables
+    export GOCACHE=/tmp/go-cache
+    export GOPATH=/root/go
+    mkdir -p $GOCACHE $GOPATH
+    
     # Fix go.mod and build with timeout
     if run_with_timeout 60 "go mod tidy" go mod tidy; then
         if run_with_timeout 900 "go build" go build -o polygon-edge main.go; then
@@ -120,9 +130,9 @@ install_via_prebuilt_binary() {
     
     # Try multiple possible download URLs
     local urls=(
-        "https://github.com/0xPolygon/polygon-edge/releases/latest/download/polygon-edge_linux_amd64.tar.gz"
         "https://github.com/0xPolygon/polygon-edge/releases/download/v1.3.1/polygon-edge_1.3.1_linux_amd64.tar.gz"
         "https://github.com/0xPolygon/polygon-edge/releases/download/v1.3.0/polygon-edge_1.3.0_linux_amd64.tar.gz"
+        "https://github.com/0xPolygon/polygon-edge/releases/latest/download/polygon-edge_linux_amd64.tar.gz"
     )
     
     for url in "${urls[@]}"; do
@@ -196,14 +206,14 @@ else
     exit 1
 fi
 
-# Continue with configuration (rest of the script remains the same)
+# Continue with configuration
 print_status "Configuring Polygon Edge..."
 
-# Initialize secrets
+# Initialize secrets with --insecure flag for local development
 print_status "Initializing node secrets"
 sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
 
-# Create genesis file
+# Create genesis file with reward wallet
 print_status "Creating genesis configuration"
 sudo -u polygon /usr/local/bin/polygon-edge genesis \
     --dir /var/lib/polygon \
@@ -211,7 +221,8 @@ sudo -u polygon /usr/local/bin/polygon-edge genesis \
     --pos \
     --epoch-size 10 \
     --premine=0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000 \
-    --premine=0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000
+    --premine=0x228466F2C715CbEC05dEAbfAc040ce3619d7CF0B:1000000000000000000000 \
+    --reward-wallet 0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6
 
 # Create configuration file
 print_status "Creating configuration file"
@@ -270,52 +281,136 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 EOF
 
-# Create utility scripts
+# Create log rotation
+print_status "Setting up log rotation"
+sudo tee /etc/logrotate.d/polygon-edge > /dev/null <<EOF
+/var/log/polygon/*.log {
+    daily
+    missingok
+    rotate 52
+    compress
+    delaycompress
+    notifempty
+    create 640 polygon polygon
+    postrotate
+        systemctl reload polygon-edge
+    endscript
+}
+EOF
+
+# Create monitoring and utility scripts
 print_status "Creating utility scripts"
+
+# Status script
 sudo tee /usr/local/bin/polygon-status > /dev/null <<'EOF'
 #!/bin/bash
 echo "=== Polygon Edge Status ==="
 systemctl status polygon-edge --no-pager
 echo ""
 echo "=== Latest Logs ==="
-tail -n 20 /var/log/polygon/polygon-edge.log
+tail -n 20 /var/log/polygon/polygon-edge.log 2>/dev/null || echo "No logs yet"
 echo ""
 echo "=== Node Info ==="
 curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
     http://localhost:8545 | jq . 2>/dev/null || echo "RPC not ready"
+echo ""
+echo "=== Peers ==="
+curl -s -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
+    http://localhost:8545 | jq . 2>/dev/null || echo "RPC not ready"
 EOF
 
-sudo chmod +x /usr/local/bin/polygon-status
+# Logs script
+sudo tee /usr/local/bin/polygon-logs > /dev/null <<'EOF'
+#!/bin/bash
+if [ "$1" = "follow" ] || [ "$1" = "-f" ]; then
+    tail -f /var/log/polygon/polygon-edge.log
+else
+    tail -n 100 /var/log/polygon/polygon-edge.log
+fi
+EOF
 
-# Configure firewall if needed
+# Restart script
+sudo tee /usr/local/bin/polygon-restart > /dev/null <<'EOF'
+#!/bin/bash
+echo "Restarting Polygon Edge service..."
+sudo systemctl restart polygon-edge
+echo "Waiting for service to start..."
+sleep 5
+sudo systemctl status polygon-edge --no-pager
+EOF
+
+# Make scripts executable
+sudo chmod +x /usr/local/bin/polygon-status
+sudo chmod +x /usr/local/bin/polygon-logs
+sudo chmod +x /usr/local/bin/polygon-restart
+
+# Create firewall rules (if firewalld is running)
 if systemctl is-active --quiet firewalld; then
     print_status "Configuring firewall"
-    sudo firewall-cmd --permanent --add-port=8545/tcp --add-port=9632/tcp --add-port=1478/tcp --add-port=5001/tcp
+    sudo firewall-cmd --permanent --add-port=8545/tcp  # JSON-RPC
+    sudo firewall-cmd --permanent --add-port=9632/tcp  # GRPC
+    sudo firewall-cmd --permanent --add-port=1478/tcp  # LibP2P
+    sudo firewall-cmd --permanent --add-port=5001/tcp  # Prometheus
     sudo firewall-cmd --reload
 fi
 
-# Start services
-print_status "Starting Polygon Edge service"
+# Enable and start the service
+print_status "Enabling and starting Polygon Edge service"
 sudo systemctl daemon-reload
 sudo systemctl enable polygon-edge
 sudo systemctl start polygon-edge
 
-# Wait and verify
-print_status "Waiting for service to start..."
+# Wait for service to start
+print_status "Waiting for Polygon Edge to start..."
 sleep 30
 
+# Check service status
+print_status "Checking service status"
 if systemctl is-active --quiet polygon-edge; then
     print_status "✅ Polygon Edge service is running successfully"
-    print_status "✅ Installation completed successfully!"
 else
-    print_error "❌ Polygon Edge service failed to start"
-    print_status "Check logs with: sudo journalctl -u polygon-edge -f"
-    exit 1
+    print_warning "⚠️ Polygon Edge service may still be starting"
+    systemctl status polygon-edge --no-pager || true
 fi
 
-print_status "=== Installation Complete ==="
-print_status "Service status: sudo systemctl status polygon-edge"
-print_status "Node status: polygon-status"
-print_status "View logs: sudo journalctl -u polygon-edge -f"
+# Display node information
+print_status "Node setup complete!"
+print_status "=== Service Information ==="
+print_status "Status: sudo systemctl status polygon-edge"
+print_status "Logs: polygon-logs [-f]"
+print_status "Status: polygon-status"
+print_status "Restart: polygon-restart"
+
+print_status "=== Network Information ==="
 print_status "JSON-RPC: http://localhost:8545"
+print_status "GRPC: localhost:9632"
+print_status "LibP2P: localhost:1478"
+print_status "Prometheus: http://localhost:5001"
+
+print_status "=== Important Files ==="
+print_status "Config: /etc/polygon/config.yaml"
+print_status "Data: /var/lib/polygon/"
+print_status "Logs: /var/log/polygon/"
+print_status "Service: /etc/systemd/system/polygon-edge.service"
+
+# Log completion
+print_status "Polygon Edge installation and setup complete!"
+
+# Final check and summary
+print_status "Running final system check..."
+if systemctl is-active --quiet polygon-edge; then
+    print_status "✅ Polygon Edge service is running"
+    print_status "✅ Installation completed successfully at $(date)"
+else
+    print_error "❌ Polygon Edge service is not running"
+    print_status "Check logs with: polygon-logs"
+    print_status "Manual start: sudo systemctl start polygon-edge"
+fi
+
+print_status "=== Installation Summary ==="
+print_status "Installation completed at $(date)"
+print_status "Node Address: $(sudo -u polygon cat /var/lib/polygon/consensus/validator.key 2>/dev/null | head -1 | cut -d':' -f2 || echo 'Check /var/lib/polygon/consensus/')"
+print_status "For status updates: polygon-status"
+print_status "For live logs: polygon-logs -f"
