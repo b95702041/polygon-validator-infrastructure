@@ -169,7 +169,7 @@ if run_with_timeout 300 "Clone Heimdall" git clone --branch v1.0.7 --single-bran
     fix_build_permissions "/tmp/heimdall" "ec2-user"
     
     # Build Heimdall with progress monitoring
-    if build_with_progress "Heimdall" "make build" 1200; then
+    if build_with_progress "Heimdall" "make build GOFLAGS='-buildvcs=false'" 1200; then
         sudo cp build/heimdalld /usr/local/bin/
         sudo cp build/heimdallcli /usr/local/bin/
         sudo chmod +x /usr/local/bin/heimdall*
@@ -202,7 +202,7 @@ if run_with_timeout 300 "Clone Bor" git clone --branch v1.5.5 --single-branch ht
     fix_build_permissions "/tmp/bor" "ec2-user"
     
     # Build Bor with progress monitoring and extended timeout
-    if build_with_progress "Bor" "make bor" 1800; then
+    if build_with_progress "Bor" "make bor GOFLAGS='-buildvcs=false'" 1800; then
         sudo cp build/bin/bor /usr/local/bin/
         sudo chmod +x /usr/local/bin/bor
         
