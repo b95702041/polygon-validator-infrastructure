@@ -156,7 +156,7 @@ sudo mkdir -p /var/lib/polygon/{bor,heimdall} /var/log/polygon /etc/polygon
 sudo chown -R polygon:polygon /var/lib/polygon /var/log/polygon /etc/polygon
 
 # Prepare build environment
-check_disk_space 4 "/tmp" || exit 1
+check_disk_space 4 "/" || exit 1
 cleanup_build_space
 setup_build_environment
 
@@ -191,7 +191,7 @@ fi
 
 # Clean up space after Heimdall build
 cleanup_build_space
-check_disk_space 3 "/tmp" || exit 1
+check_disk_space 3 "/" || exit 1
 
 # Install Bor
 print_status "📦 Installing Bor (Execution Layer)..."
