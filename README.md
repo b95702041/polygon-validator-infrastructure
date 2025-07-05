@@ -202,6 +202,117 @@ bootnodes = [
 
 **⚠️ Note**: These peer addresses are hardcoded and tested as of July 2025. If deployment fails due to peer connectivity issues, update the peer lists in `terraform/full-install-polygon.sh` with current working peers from [Polygon Documentation](https://docs.polygon.technology/pos/reference/seed-and-bootnodes/).
 
+## 🔄 Automation Best Practices
+
+### Timeout Handling
+All long-running commands should include timeouts:
+
+```bash
+timeout 600 go install github.com/0xPolygon/polygon-edge@develop
+timeout 300 wget -q https://example.com/file.tar.gz
+```
+
+### Error Detection
+Scripts should verify each step before proceeding:
+
+```bash
+if verify_polygon_binary "/usr/local/bin/polygon-edge"; then
+    print_status "✅ Installation successful"
+else
+    print_error "❌ Installation failed"
+    exit 1
+fi
+```
+
+### Polygon Edge Installation Issues
+
+#### Problem: Binary download failures
+**Error:**
+```
+wget: cannot download polygon-edge binary
+404 Not Found
+```
+
+**Root Cause:** Pre-built binary URLs may not exist for all versions or platforms.
+
+**Solution:** Use multiple fallback installation strategies:
+1. **Go Install** (fastest, most reliable)
+2. **Pre-built Binary** (multiple URLs)
+3. **Source Build** (slowest but always works)
+
+#### Problem: Go build cache errors
+**Error:**
+```
+build cache is required, but could not be located: GOCACHE is not defined
+```
+
+**Solution:** Set Go environment variables before building:
+
+```bash
+export GOCACHE=/tmp/go-cache
+export GOPATH=/root/go
+mkdir -p $GOCACHE $GOPATH
+```
+
+#### Problem: Secrets initialization hanging
+**Error:** Script hangs at "Initializing node secrets" step
+
+**Root Cause:** Polygon Edge requires explicit `--insecure` flag for local development.
+
+**Solution:** Add `--insecure` flag to secrets initialization:
+
+```bash
+sudo -u polygon /usr/local/bin/polygon-edge secrets init --data-dir /var/lib/polygon --insecure
+```
+
+**Note:** The `--insecure` flag stores keys locally on filesystem. Avoid in production.
+
+#### Problem: Genesis creation requires reward wallet
+**Error:**
+```
+reward wallet address must be defined
+a custom reward token must be defined when native ERC20 token is non-mintable
+```
+
+**Root Cause:** Default consensus is `polybft` (Proof of Stake) which requires reward configuration.
+
+**Solution:** Use simpler IBFT consensus for learning/development:
+
+```bash
+sudo -u polygon /usr/local/bin/polygon-edge genesis \
+    --dir /var/lib/polygon \
+    --name "polygon-testnet" \
+    --consensus ibft \
+    --premine=0x85da99c8a7C2C95964c8EfD687E95E632Fc533D6:1000000000000000000000
+```
+
+**Consensus Options:**
+- ✅ **IBFT** - Simple, no rewards needed, perfect for learning
+- ❌ **PolyBFT** - Complex, requires rewards/staking, production-focused
+
+#### Problem: curl-minimal conflicts with curl package
+**Error:**
+```
+package curl-minimal conflicts with curl provided by curl
+```
+
+**Root Cause:** Amazon Linux 2023 ships with `curl-minimal` by default, which conflicts with the full `curl` package needed for development tools.
+
+**Solution:** Add `--allowerasing` flag to all `dnf install` commands:
+
+```bash
+sudo dnf install -y --allowerasing wget curl git jq nc
+sudo dnf groupinstall -y --allowerasing "Development Tools"
+```
+
+**Why it works:** The `--allowerasing` flag tells dnf to automatically remove conflicting packages and install the requested ones.
+
+### Fallback Strategies
+Implement multiple installation methods with graceful fallbacks:
+1. Try fastest method first
+2. Fall back to alternative methods
+3. Fail with clear error message if all methods fail
+
 ## 📊 Performance Metrics
 
 ### Sync Performance
