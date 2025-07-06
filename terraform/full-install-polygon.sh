@@ -237,7 +237,7 @@ fi
 
 # Configure Heimdall with working peers
 print_status "Configuring Heimdall with working peer connections..."
-sudo -u polygon tee /var/lib/polygon/heimdall/config/config.toml > /dev/null <<EOF
+sudo -u polygon tee /var/lib/polygon/heimdall/config/config.toml > /dev/null <<'HEIMDALL_EOF'
 # Tendermint Core Configuration
 
 #######################################################################
@@ -603,7 +603,7 @@ max_open_connections = 3
 
 # Instrumentation namespace
 namespace = "tendermint"
-EOF
+HEIMDALL_EOF
 
 # Initialize Bor
 print_status "🔧 Configuring Bor..."
@@ -622,10 +622,7 @@ print_status "✅ Bor configuration completed (genesis initialization not requir
 
 # Configure Bor with working bootnodes
 print_status "Configuring Bor with working bootnode connections..."
-if ! sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<EOF; then
-    print_error "Failed to create Bor configuration"
-    exit 1
-fi
+sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<'BOR_EOF'
 [pprof]
   addr = "127.0.0.1"
   port = 6060
@@ -741,17 +738,14 @@ fi
 [parallelevm]
   enable = true
   procs = 8
-EOF
+BOR_EOF
 
 # Create systemd services
 print_status "📝 Creating systemd services..."
 
 # Heimdall service
 print_status "Creating Heimdall systemd service..."
-if ! sudo tee /etc/systemd/system/heimdalld.service > /dev/null <<EOF; then
-    print_error "Failed to create Heimdall service"
-    exit 1
-fi
+sudo tee /etc/systemd/system/heimdalld.service > /dev/null <<'HEIMDALL_SERVICE_EOF'
 [Unit]
 Description=Heimdall Daemon
 After=network.target
@@ -771,14 +765,11 @@ SyslogIdentifier=heimdalld
 
 [Install]
 WantedBy=multi-user.target
-EOF
+HEIMDALL_SERVICE_EOF
 
 # Heimdall REST service
 print_status "Creating Heimdall REST systemd service..."
-if ! sudo tee /etc/systemd/system/heimdalld-rest.service > /dev/null <<EOF; then
-    print_error "Failed to create Heimdall REST service"
-    exit 1
-fi
+sudo tee /etc/systemd/system/heimdalld-rest.service > /dev/null <<'HEIMDALL_REST_SERVICE_EOF'
 [Unit]
 Description=Heimdall REST Server
 After=heimdalld.service
@@ -799,14 +790,11 @@ SyslogIdentifier=heimdall-rest
 
 [Install]
 WantedBy=multi-user.target
-EOF
+HEIMDALL_REST_SERVICE_EOF
 
 # Bor service
 print_status "Creating Bor systemd service..."
-if ! sudo tee /etc/systemd/system/bor.service > /dev/null <<EOF; then
-    print_error "Failed to create Bor service"
-    exit 1
-fi
+sudo tee /etc/systemd/system/bor.service > /dev/null <<'BOR_SERVICE_EOF'
 [Unit]
 Description=Bor Service
 After=heimdalld-rest.service
@@ -827,17 +815,14 @@ SyslogIdentifier=bor
 
 [Install]
 WantedBy=multi-user.target
-EOF
+BOR_SERVICE_EOF
 
 # Create utility scripts
 print_status "📋 Creating utility scripts..."
 
 # Main status script
 print_status "Creating polygon-status utility script..."
-if ! sudo tee /usr/local/bin/polygon-status > /dev/null <<'EOF'; then
-    print_error "Failed to create polygon-status script"
-    exit 1
-fi
+sudo tee /usr/local/bin/polygon-status > /dev/null <<'STATUS_SCRIPT_EOF'
 #!/bin/bash
 echo "=== Polygon PoS Node Status ==="
 echo ""
@@ -874,14 +859,11 @@ echo "--- Peer Count ---"
 curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
     http://localhost:8545 2>/dev/null | jq . || echo "Bor RPC not ready"
-EOF
+STATUS_SCRIPT_EOF
 
 # Individual log viewers
 print_status "Creating polygon-logs utility script..."
-if ! sudo tee /usr/local/bin/polygon-logs > /dev/null <<'EOF'; then
-    print_error "Failed to create polygon-logs script"
-    exit 1
-fi
+sudo tee /usr/local/bin/polygon-logs > /dev/null <<'LOGS_SCRIPT_EOF'
 #!/bin/bash
 case "$1" in
     "heimdall"|"h")
@@ -924,14 +906,11 @@ case "$1" in
         echo "  polygon-logs all           # Show recent logs from all services"
         ;;
 esac
-EOF
+LOGS_SCRIPT_EOF
 
 # Restart script
 print_status "Creating polygon-restart utility script..."
-if ! sudo tee /usr/local/bin/polygon-restart > /dev/null <<'EOF'; then
-    print_error "Failed to create polygon-restart script"
-    exit 1
-fi
+sudo tee /usr/local/bin/polygon-restart > /dev/null <<'RESTART_SCRIPT_EOF'
 #!/bin/bash
 case "$1" in
     "heimdall"|"h")
@@ -974,14 +953,11 @@ case "$1" in
         echo "  polygon-restart bor        # Restart only bor"
         ;;
 esac
-EOF
+RESTART_SCRIPT_EOF
 
 # Performance monitoring script
 print_status "Creating polygon-monitor utility script..."
-if ! sudo tee /usr/local/bin/polygon-monitor > /dev/null <<'EOF'; then
-    print_error "Failed to create polygon-monitor script"
-    exit 1
-fi
+sudo tee /usr/local/bin/polygon-monitor > /dev/null <<'MONITOR_SCRIPT_EOF'
 #!/bin/bash
 echo "=== Polygon PoS Node Monitor ==="
 echo "Press Ctrl+C to exit"
@@ -1051,7 +1027,7 @@ while true; do
     
     sleep 10
 done
-EOF
+MONITOR_SCRIPT_EOF
 
 # Make all scripts executable
 print_status "Making utility scripts executable..."
@@ -1063,7 +1039,7 @@ print_status "✅ Utility scripts created and made executable"
 
 # Create log rotation
 print_status "Setting up log rotation..."
-sudo tee /etc/logrotate.d/polygon > /dev/null <<EOF
+sudo tee /etc/logrotate.d/polygon > /dev/null <<'LOGROTATE_EOF'
 /var/log/polygon/*.log {
     daily
     missingok
@@ -1076,7 +1052,7 @@ sudo tee /etc/logrotate.d/polygon > /dev/null <<EOF
         systemctl reload heimdalld heimdalld-rest bor
     endscript
 }
-EOF
+LOGROTATE_EOF
 
 # Configure firewall if running
 if systemctl is-active --quiet firewalld; then
