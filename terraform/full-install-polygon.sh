@@ -1,6 +1,6 @@
 #!/bin/bash
-# Polygon PoS (Bor + Heimdall) Validator Installation Script
-# This script builds and configures a complete Polygon validator node
+# Polygon PoS (Bor + Heimdall) Validator Installation Script - FIXED VERSION
+# This script builds and configures a complete Polygon validator node with proper RPC endpoints
 set -e
 
 # Colors for output
@@ -124,7 +124,25 @@ build_with_progress() {
     fi
 }
 
-print_status "🚀 Starting Polygon PoS (Bor + Heimdall) Installation"
+# Function to test RPC connectivity
+test_rpc_endpoint() {
+    local url=$1
+    local name=$2
+    
+    print_status "Testing $name connectivity: $url"
+    
+    if curl -s -m 10 -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+        "$url" > /dev/null; then
+        print_status "✅ $name is accessible"
+        return 0
+    else
+        print_warning "⚠️ $name connectivity test failed: $url"
+        return 1
+    fi
+}
+
+print_status "🚀 Starting Polygon PoS (Bor + Heimdall) Installation - FIXED VERSION"
 
 # Update system with conflict resolution
 print_status "Updating system packages..."
@@ -235,8 +253,8 @@ if ! run_with_timeout 60 "Download Heimdall genesis" sudo -u polygon wget -q htt
     exit 1
 fi
 
-# Configure Heimdall with working peers
-print_status "Configuring Heimdall with working peer connections..."
+# Configure Heimdall with working peers and state sync
+print_status "Configuring Heimdall with state sync and RPC endpoints..."
 sudo -u polygon tee /var/lib/polygon/heimdall/config/config.toml > /dev/null <<'HEIMDALL_EOF'
 # Tendermint Core Configuration
 
@@ -257,11 +275,6 @@ moniker = "polygon-validator"
 fast_sync = true
 
 # Database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb
-# * goleveldb (github.com/syndtr/goleveldb - most popular choice)
-# * cleveldb (uses levigo wrapper)
-# * boltdb (uses etcd's fork of bolt - https://github.com/etcd-io/bbolt)
-# * rocksdb (uses github.com/tecbot/gorocksdb)
-# * badgerdb (uses github.com/dgraph-io/badger)
 db_backend = "goleveldb"
 
 # Database directory
@@ -311,8 +324,6 @@ filter_peers = false
 laddr = "tcp://0.0.0.0:26657"
 
 # A list of origins a cross-domain request can be executed from
-# Default value '[]' disables cors support
-# Use '["*"]' to allow any origin
 cors_allowed_origins = []
 
 # A list of methods the client is allowed to use with cross-domain requests
@@ -322,44 +333,24 @@ cors_allowed_methods = ["HEAD", "GET", "POST", ]
 cors_allowed_headers = ["Origin", "Accept", "Content-Type", "X-Requested-With", "X-Server-Time", ]
 
 # TCP or UNIX socket address for the gRPC server to listen on
-# NOTE: This server only supports /broadcast_tx_commit
 grpc_laddr = ""
 
 # Maximum number of simultaneous connections.
-# Does not include RPC (HTTP&WebSocket) connections. See max_open_connections
-# If you want to accept a larger number than the default, make sure
-# you increase your OS limits.
-# 0 - unlimited.
-# Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
-# 1024 - 40 - 10 - 50 = 924 = ~900
 grpc_max_open_connections = 900
 
 # Activate unsafe RPC commands like /dial_seeds and /unsafe_flush_mempool
 unsafe = false
 
 # Maximum number of simultaneous connections (including WebSocket).
-# Does not include gRPC connections. See grpc_max_open_connections
-# If you want to accept a larger number than the default, make sure
-# you increase your OS limits.
-# 0 - unlimited.
-# Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
-# 1024 - 40 - 10 - 50 = 924 = ~900
 max_open_connections = 900
 
 # Maximum number of unique clientIDs that can /subscribe
-# If you're using /broadcast_tx_commit, set to the estimated maximum number
-# of broadcast_tx_commit calls per block.
 max_subscription_clients = 100
 
 # Maximum number of unique queries a given client can /subscribe to
-# If you're using GRPC (or Local RPC client) and /broadcast_tx_commit, set to
-# the estimated # maximum number of broadcast_tx_commit calls per block.
 max_subscriptions_per_client = 5
 
 # How long to wait for a tx to be committed during /broadcast_tx_commit.
-# WARNING: Using a value larger than 10s will result in increasing the
-# global HTTP write timeout, which applies to all connections and endpoints.
-# See https://github.com/tendermint/tendermint/issues/3435
 timeout_broadcast_tx_commit = "10s"
 
 # Maximum size of request body, in bytes
@@ -369,18 +360,9 @@ max_body_bytes = 1000000
 max_header_bytes = 1048576
 
 # The path to a file containing certificate that is used to create the HTTPS server.
-# Migth be either absolute path or path related to Tendermint's config directory.
-# If the certificate is signed by a certificate authority,
-# the certFile should be the concatenation of the server's certificate, any intermediates,
-# and the CA's certificate.
-# NOTE: both tls_cert_file and tls_key_file must be present for Tendermint to create HTTPS server.
-# Otherwise, HTTP server is run.
 tls_cert_file = ""
 
 # The path to a file containing matching private key that is used to create the HTTPS server.
-# Migth be either absolute path or path related to Tendermint's config directory.
-# NOTE: both tls_cert_file and tls_key_file must be present for Tendermint to create HTTPS server.
-# Otherwise, HTTP server is run.
 tls_key_file = ""
 
 # pprof listen address (https://golang.org/pkg/net/http/pprof)
@@ -395,9 +377,6 @@ pprof_laddr = ""
 laddr = "tcp://0.0.0.0:26656"
 
 # Address to advertise to peers for them to dial
-# If empty, will use the same port as the laddr,
-# and will introspect on the listener or use UPnP
-# to figure out the address.
 external_address = ""
 
 # Comma separated list of seed nodes to connect to
@@ -413,7 +392,6 @@ upnp = false
 addr_book_file = "config/addrbook.json"
 
 # Set true for strict address routability rules
-# Set false for private or local networks
 addr_book_strict = true
 
 # Maximum number of inbound peers
@@ -445,8 +423,6 @@ pex = true
 
 # Seed mode, in which node constantly crawls the network and looks for
 # peers. If another node asks it for addresses, it responds and disconnects.
-#
-# Does not work if the peer-exchange reactor is disabled.
 seed_mode = false
 
 # Comma separated list of peer IDs to keep private (will not be gossiped to other peers)
@@ -472,25 +448,18 @@ wal_dir = ""
 size = 5000
 
 # Limit the total size of all txs in the mempool.
-# This only accounts for raw transactions (e.g. given 1MB transactions and
-# max_txs_bytes=5MB, mempool will only accept 5 transactions).
 max_txs_bytes = 1073741824
 
 # Size of the cache (used to filter transactions we saw earlier) in transactions
 cache_size = 10000
 
 # Do not remove invalid transactions from the cache (default: false)
-# Set to true if it's not possible for any invalid transaction to become valid
-# again in the future.
 keep_invalid_txs_in_cache = false
 
 # Maximum size of a single transaction.
-# NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
 max_tx_bytes = 1048576
 
 # Maximum size of a batch of transactions to send to a peer
-# Including space needed by encoding (one varint per transaction).
-# XXX: Unused due to https://github.com/tendermint/tendermint/issues/5796
 max_batch_bytes = 0
 
 #######################################################
@@ -498,19 +467,11 @@ max_batch_bytes = 0
 #######################################################
 [statesync]
 # State sync rapidly bootstraps a new node by discovering, fetching, and restoring a state machine
-# snapshot from peers instead of fetching and replaying historical blocks. Requires some peers in
-# the network to take and serve state machine snapshots. State sync is not attempted if the node
-# has any local state (LastBlockHeight > 0). The node will have a truncated block history,
-# starting from the height of the snapshot.
-enable = false
+# snapshot from peers instead of fetching and replaying historical blocks. 
+enable = true
 
-# RPC servers (comma-separated) for light client verification of the synced state machine and
-# retrieval of state data for node bootstrapping. Also needs a trusted height and corresponding
-# header hash obtained from a trusted source, and a period during which validators can be trusted.
-#
-# For Cosmos SDK-based chains, trust_period should usually be about 2/3 of the unbonding period (~2
-# weeks) during which they can be financially punished (slashed) for misbehavior.
-rpc_servers = ""
+# RPC servers (comma-separated) for light client verification of the synced state machine
+rpc_servers = "https://polygon-rpc.com,https://rpc-mainnet.matic.network"
 trust_height = 0
 trust_hash = ""
 trust_period = "168h0m0s"
@@ -518,15 +479,13 @@ trust_period = "168h0m0s"
 # Time to spend discovering snapshots before initiating a restore.
 discovery_time = "15s"
 
-# Temporary directory for state sync snapshot chunks, defaults to the OS tempdir (since v0.33.7).
-# Will create a new, randomly named directory within, and remove it when done.
+# Temporary directory for state sync snapshot chunks
 temp_dir = ""
 
-# The timeout duration before re-requesting a chunk, possibly from a different
-# peer (default: 1 minute).
+# The timeout duration before re-requesting a chunk
 chunk_request_timeout = "10s"
 
-# The number of concurrent chunk fetchers to run (default: 1).
+# The number of concurrent chunk fetchers to run
 chunk_fetchers = "4"
 
 #######################################################
@@ -535,9 +494,6 @@ chunk_fetchers = "4"
 [fastsync]
 
 # Fast Sync version to use:
-#   1) "v0" (default) - the legacy fast sync implementation
-#   2) "v1" - refactor of v0 version for better testability
-#   2) "v2" - complete redesign of v0, optimized for testability & readability
 version = "v0"
 
 #######################################################
@@ -572,14 +528,6 @@ peer_query_maj23_sleep_duration = "2s"
 [tx_index]
 
 # What indexer to use for transactions
-#
-# The application will set which txs to index. In some cases a node operator will be able
-# to decide which txs to index based on configuration set in the application.
-#
-# Options:
-#   1) "null"
-#   2) "kv" (default) - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
-# 		- When "kv" is chosen "tx.height" and "tx.hash" will always be indexed.
 indexer = "kv"
 
 #######################################################
@@ -589,21 +537,81 @@ indexer = "kv"
 
 # When true, Prometheus metrics are served under /metrics on
 # PrometheusListenAddr.
-# Check out the documentation for the list of available metrics.
 prometheus = false
 
 # Address to listen for Prometheus collector(s) connections
 prometheus_listen_addr = ":26660"
 
 # Maximum number of simultaneous connections.
-# If you want to accept a larger number than the default, make sure
-# you increase your OS limits.
-# 0 - unlimited.
 max_open_connections = 3
 
 # Instrumentation namespace
 namespace = "tendermint"
 HEIMDALL_EOF
+
+# **CRITICAL FIX**: Configure Heimdall with required RPC endpoints
+print_status "🔑 Configuring Heimdall with required RPC endpoints..."
+sudo -u polygon tee /var/lib/polygon/heimdall/config/heimdall-config.toml > /dev/null <<'HEIMDALL_CONFIG_EOF'
+# Heimdall Configuration
+
+# Ethereum mainnet RPC endpoint (REQUIRED for checkpoint verification)
+eth_rpc_url = "https://ethereum-rpc.publicnode.com"
+
+# Bor RPC endpoint (REQUIRED for validation)
+bor_rpc_url = "http://127.0.0.1:8545"
+
+# Chain configuration
+chain_id = "137"
+chain_name = "mainnet"
+
+# Database configuration
+db_backend = "goleveldb"
+
+# Logging configuration
+log_level = "info"
+
+# Server configuration
+server_address = "0.0.0.0:1317"
+
+# Tendermint RPC
+tendermint_rpc_url = "http://127.0.0.1:26657"
+
+# Checkpoint confirmation blocks
+checkpoint_confirmation_blocks = 64
+
+# Milestone confirmation blocks  
+milestone_confirmation_blocks = 16
+
+# Span confirmation blocks
+span_confirmation_blocks = 6400
+
+# Gas limit for transactions
+gas_limit = 10000000
+
+# Gas price for transactions
+gas_price = "1000000000"
+
+# Maximum gas price allowed
+max_gas_price = "400000000000"
+
+# Heimdall block interval
+heimdall_block_interval = "5s"
+
+# Sync configuration
+sync_mode = "fast"
+
+# Pruning configuration
+pruning = "default"
+
+# State sync configuration
+state_sync_enable = true
+state_sync_height = 0
+HEIMDALL_CONFIG_EOF
+
+# Test RPC connectivity before proceeding
+print_status "🔍 Testing external RPC connectivity..."
+test_rpc_endpoint "https://ethereum-rpc.publicnode.com" "Ethereum RPC"
+test_rpc_endpoint "https://polygon-rpc.com" "Polygon RPC"
 
 # Initialize Bor
 print_status "🔧 Configuring Bor..."
@@ -616,12 +624,10 @@ if ! run_with_timeout 60 "Download Bor genesis" sudo -u polygon wget -q https://
     exit 1
 fi
 
-# Note: Bor v1.5.5+ does not require genesis initialization
-# The genesis file is loaded directly when the server starts
-print_status "✅ Bor configuration completed (genesis initialization not required for v1.5.5+)"
+print_status "✅ Bor configuration completed"
 
-# Configure Bor with working bootnodes
-print_status "Configuring Bor with working bootnode connections..."
+# Configure Bor with updated bootnodes and RPC endpoints
+print_status "Configuring Bor with working bootnode connections and RPC settings..."
 sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<'BOR_EOF'
 [pprof]
   addr = "127.0.0.1"
@@ -672,10 +678,11 @@ sudo -u polygon tee /var/lib/polygon/bor/config.toml > /dev/null <<'BOR_EOF'
   [p2p.discovery]
     v5disc = false
     bootnodes = [
-      "enode://e4fb013061eba9a2c6fb0a41bbd4149f4808f0fb7e88ec55d7163f19a6f02d64d0ce5ecc81528b769ba552a7068057432d44ab5e9e42842aff5b4709aa2c3f3b@34.89.75.187:30303",
-      "enode://a49da6300403cf9b31e30502eb22c142ba4f77c9dda44990bccce9f2121c3152487ee95ee55c6b92d4cdce77845e40f59fd927da70ea91cf935b23e262236d75@34.142.43.249:30303",
-      "enode://0e50fdcc2106b0c4e4d9ffbd7798ceda9432e680723dc7b7b4627e384078850c1c4a3e67f17ef2c484201ae6ee7c491cbf5e189b8ffee3948252e9bef59fc54e@35.234.148.172:30303",
-      "enode://a0bc4dd2b59370d5a375a7ef9ac06cf531571005ae8b2ead2e9aaeb8205168919b169451fb0ef7061e0d80592e6ed0720f559bd1be1c4efb6e6c4381f1bdb986@35.246.99.203:30303"
+      "enode://0cb82b395094ee4a2915e9714894627de9ed8498fb881cec6db7c65e8b9a5bd7f2f25cc84e71e89d0947e51c76e85d0847de848c7782b13c0255247a6758178@44.232.55.71:30303",
+      "enode://88116f4295f5a31538ae409e4d44ad40d22e44ee9342869e7d68bdec55b0f83c1530355ce8b41fbec0928a7d75a5745d528450d30aec92066ab6ba1ee351d710@159.203.9.164:30303",
+      "enode://3178257cd1e1ab8f95eeb7cc45e28b6047a0432b2f9412cff1db9bb31426eac30edeb81fedc30b7cd3059f0902b5350f75d1b376d2c632e1b375af0553813e6f@35.221.13.28:30303",
+      "enode://16d9a28eadbd247a09ff53b7b1f22231f6deaf10b86d4b23924023aea49bfdd51465b36d79d29be46a5497a96151a1a1ea448f8a8666266284e004306b2afb6e@35.199.4.13:30303",
+      "enode://ef271e1c28382daa6ac2d1006dd1924356cfd843dbe88a7397d53396e0741ca1a8da0a113913dee52d9071f0ad8d39e3ce87aa81ebc190776432ee7ddc9d9470@35.230.116.151:30303"
     ]
     bootnodesv4 = []
     bootnodesv5 = []
@@ -743,7 +750,7 @@ BOR_EOF
 # Create systemd services
 print_status "📝 Creating systemd services..."
 
-# Heimdall service
+# Heimdall service with updated configuration
 print_status "Creating Heimdall systemd service..."
 sudo tee /etc/systemd/system/heimdalld.service > /dev/null <<'HEIMDALL_SERVICE_EOF'
 [Unit]
@@ -758,10 +765,12 @@ Restart=always
 RestartSec=5
 User=polygon
 Group=polygon
-ExecStart=/usr/local/bin/heimdalld start --home /var/lib/polygon/heimdall
+ExecStart=/usr/local/bin/heimdalld start --home /var/lib/polygon/heimdall --chain-id 137
 StandardOutput=append:/var/log/polygon/heimdalld.log
 StandardError=append:/var/log/polygon/heimdalld-error.log
 SyslogIdentifier=heimdalld
+Environment="ETH_RPC_URL=https://ethereum-rpc.publicnode.com"
+Environment="BOR_RPC_URL=http://127.0.0.1:8545"
 
 [Install]
 WantedBy=multi-user.target
@@ -783,7 +792,7 @@ Restart=always
 RestartSec=5
 User=polygon
 Group=polygon
-ExecStart=/usr/local/bin/heimdallcli rest-server --home /var/lib/polygon/heimdall --node tcp://127.0.0.1:26657
+ExecStart=/usr/local/bin/heimdallcli rest-server --home /var/lib/polygon/heimdall --node tcp://127.0.0.1:26657 --chain-id 137
 StandardOutput=append:/var/log/polygon/heimdall-rest.log
 StandardError=append:/var/log/polygon/heimdall-rest-error.log
 SyslogIdentifier=heimdall-rest
@@ -792,7 +801,7 @@ SyslogIdentifier=heimdall-rest
 WantedBy=multi-user.target
 HEIMDALL_REST_SERVICE_EOF
 
-# Bor service
+# Bor service with improved configuration
 print_status "Creating Bor systemd service..."
 sudo tee /etc/systemd/system/bor.service > /dev/null <<'BOR_SERVICE_EOF'
 [Unit]
@@ -820,72 +829,173 @@ BOR_SERVICE_EOF
 # Create utility scripts
 print_status "📋 Creating utility scripts..."
 
-# Main status script
+# Enhanced status script with RPC connectivity checks
 print_status "Creating polygon-status utility script..."
 sudo tee /usr/local/bin/polygon-status > /dev/null <<'STATUS_SCRIPT_EOF'
 #!/bin/bash
-echo "=== Polygon PoS Node Status ==="
+echo "=== Polygon PoS Node Status - Enhanced ==="
 echo ""
 
 echo "--- Service Status ---"
-sudo systemctl status heimdalld --no-pager -l | head -10
+printf "Heimdall:      "
+if systemctl is-active --quiet heimdalld; then
+    echo -e "\033[32mRunning\033[0m"
+else
+    echo -e "\033[31mStopped\033[0m"
+fi
+
+printf "Heimdall REST: "
+if systemctl is-active --quiet heimdalld-rest; then
+    echo -e "\033[32mRunning\033[0m"
+else
+    echo -e "\033[31mStopped\033[0m"
+fi
+
+printf "Bor:           "
+if systemctl is-active --quiet bor; then
+    echo -e "\033[32mRunning\033[0m"
+else
+    echo -e "\033[31mStopped\033[0m"
+fi
 echo ""
-sudo systemctl status heimdalld-rest --no-pager -l | head -10
-echo ""
-sudo systemctl status bor --no-pager -l | head -10
+
+echo "--- RPC Connectivity Tests ---"
+printf "Ethereum RPC:  "
+if curl -s -m 5 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    https://ethereum-rpc.publicnode.com > /dev/null 2>&1; then
+    echo -e "\033[32mAccessible\033[0m"
+else
+    echo -e "\033[31mFailed\033[0m"
+fi
+
+printf "Polygon RPC:   "
+if curl -s -m 5 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    https://polygon-rpc.com > /dev/null 2>&1; then
+    echo -e "\033[32mAccessible\033[0m"
+else
+    echo -e "\033[31mFailed\033[0m"
+fi
+
+printf "Local Bor RPC: "
+if curl -s -m 5 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    http://localhost:8545 > /dev/null 2>&1; then
+    echo -e "\033[32mAccessible\033[0m"
+else
+    echo -e "\033[31mNot Ready\033[0m"
+fi
 echo ""
 
 echo "--- Heimdall Sync Status ---"
-curl -s localhost:26657/status | jq '.result.sync_info' 2>/dev/null || echo "Heimdall RPC not ready"
+heimdall_status=$(curl -s localhost:26657/status 2>/dev/null)
+if [ $? -eq 0 ]; then
+    echo "Latest Block: $(echo $heimdall_status | jq -r '.result.sync_info.latest_block_height' 2>/dev/null || echo 'N/A')"
+    echo "Catching Up:  $(echo $heimdall_status | jq -r '.result.sync_info.catching_up' 2>/dev/null || echo 'N/A')"
+    echo "Block Time:   $(echo $heimdall_status | jq -r '.result.sync_info.latest_block_time' 2>/dev/null || echo 'N/A')"
+else
+    echo "Heimdall RPC not ready"
+fi
 echo ""
 
 echo "--- Heimdall Peers ---"
-curl -s localhost:26657/net_info | jq '.result.n_peers' 2>/dev/null || echo "Heimdall RPC not ready"
+peer_count=$(curl -s localhost:26657/net_info 2>/dev/null | jq -r '.result.n_peers' 2>/dev/null)
+echo "Connected Peers: ${peer_count:-'N/A'}"
 echo ""
 
 echo "--- Bor Sync Status ---"
-curl -s -X POST -H "Content-Type: application/json" \
+bor_sync=$(curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
-    http://localhost:8545 2>/dev/null | jq . || echo "Bor RPC not ready"
+    http://localhost:8545 2>/dev/null)
+if [ $? -eq 0 ]; then
+    echo "Sync Status: $(echo $bor_sync | jq . 2>/dev/null || echo 'Not ready')"
+else
+    echo "Bor RPC not ready"
+fi
 echo ""
 
 echo "--- Latest Block ---"
-curl -s -X POST -H "Content-Type: application/json" \
+bor_block=$(curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-    http://localhost:8545 2>/dev/null | jq . || echo "Bor RPC not ready"
+    http://localhost:8545 2>/dev/null)
+if [ $? -eq 0 ]; then
+    block_hex=$(echo $bor_block | jq -r '.result' 2>/dev/null)
+    if [ "$block_hex" != "null" ] && [ "$block_hex" != "" ]; then
+        block_dec=$((16#${block_hex#0x}))
+        echo "Block Number: $block_dec (hex: $block_hex)"
+    else
+        echo "Block Number: Not available"
+    fi
+else
+    echo "Bor RPC not ready"
+fi
 echo ""
 
 echo "--- Peer Count ---"
-curl -s -X POST -H "Content-Type: application/json" \
+peer_count_bor=$(curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
-    http://localhost:8545 2>/dev/null | jq . || echo "Bor RPC not ready"
+    http://localhost:8545 2>/dev/null | jq -r '.result' 2>/dev/null)
+if [ "$peer_count_bor" != "null" ] && [ "$peer_count_bor" != "" ]; then
+    peer_dec=$((16#${peer_count_bor#0x}))
+    echo "Bor Peers: $peer_dec"
+else
+    echo "Bor Peers: Not available"
+fi
 STATUS_SCRIPT_EOF
 
-# Individual log viewers
+# Enhanced log viewer with error detection
 print_status "Creating polygon-logs utility script..."
 sudo tee /usr/local/bin/polygon-logs > /dev/null <<'LOGS_SCRIPT_EOF'
 #!/bin/bash
 case "$1" in
     "heimdall"|"h")
         if [ "$2" = "-f" ] || [ "$2" = "follow" ]; then
+            echo "Following Heimdall logs (Ctrl+C to stop)..."
             tail -f /var/log/polygon/heimdalld.log
+        elif [ "$2" = "-e" ] || [ "$2" = "error" ]; then
+            echo "=== Heimdall Error Logs ==="
+            tail -n 50 /var/log/polygon/heimdalld-error.log 2>/dev/null || echo "No error logs yet"
         else
+            echo "=== Heimdall Logs (last 100 lines) ==="
             tail -n 100 /var/log/polygon/heimdalld.log
         fi
         ;;
     "rest"|"r")
         if [ "$2" = "-f" ] || [ "$2" = "follow" ]; then
+            echo "Following Heimdall REST logs (Ctrl+C to stop)..."
             tail -f /var/log/polygon/heimdall-rest.log
+        elif [ "$2" = "-e" ] || [ "$2" = "error" ]; then
+            echo "=== Heimdall REST Error Logs ==="
+            tail -n 50 /var/log/polygon/heimdall-rest-error.log 2>/dev/null || echo "No error logs yet"
         else
+            echo "=== Heimdall REST Logs (last 100 lines) ==="
             tail -n 100 /var/log/polygon/heimdall-rest.log
         fi
         ;;
     "bor"|"b")
         if [ "$2" = "-f" ] || [ "$2" = "follow" ]; then
+            echo "Following Bor logs (Ctrl+C to stop)..."
             tail -f /var/log/polygon/bor.log
+        elif [ "$2" = "-e" ] || [ "$2" = "error" ]; then
+            echo "=== Bor Error Logs ==="
+            tail -n 50 /var/log/polygon/bor-error.log 2>/dev/null || echo "No error logs yet"
         else
+            echo "=== Bor Logs (last 100 lines) ==="
             tail -n 100 /var/log/polygon/bor.log
         fi
+        ;;
+    "errors"|"e")
+        echo "=== Recent Errors from All Services ==="
+        echo ""
+        echo "--- Heimdall Errors ---"
+        grep -i "error\|failed\|panic" /var/log/polygon/heimdalld.log 2>/dev/null | tail -10 || echo "No errors found"
+        echo ""
+        echo "--- Heimdall REST Errors ---"
+        grep -i "error\|failed\|panic" /var/log/polygon/heimdall-rest.log 2>/dev/null | tail -10 || echo "No errors found"
+        echo ""
+        echo "--- Bor Errors ---"
+        grep -i "error\|failed\|panic" /var/log/polygon/bor.log 2>/dev/null | tail -10 || echo "No errors found"
         ;;
     "all"|"a")
         echo "=== Heimdall Logs (last 20 lines) ==="
@@ -898,64 +1008,87 @@ case "$1" in
         tail -n 20 /var/log/polygon/bor.log 2>/dev/null || echo "No logs yet"
         ;;
     *)
-        echo "Usage: polygon-logs [heimdall|rest|bor|all] [-f|follow]"
+        echo "Usage: polygon-logs [heimdall|rest|bor|all|errors] [options]"
+        echo ""
+        echo "Services:"
+        echo "  heimdall, h    - Show Heimdall logs"
+        echo "  rest, r        - Show Heimdall REST logs"
+        echo "  bor, b         - Show Bor logs"
+        echo "  all, a         - Show recent logs from all services"
+        echo "  errors, e      - Show recent errors from all services"
+        echo ""
+        echo "Options:"
+        echo "  -f, follow     - Follow logs in real-time"
+        echo "  -e, error      - Show error logs"
+        echo ""
         echo "Examples:"
-        echo "  polygon-logs heimdall      # Show last 100 heimdall log lines"
-        echo "  polygon-logs heimdall -f   # Follow heimdall logs"
-        echo "  polygon-logs bor follow    # Follow bor logs"
-        echo "  polygon-logs all           # Show recent logs from all services"
+        echo "  polygon-logs heimdall          # Show last 100 heimdall log lines"
+        echo "  polygon-logs heimdall -f       # Follow heimdall logs"
+        echo "  polygon-logs bor -e            # Show bor error logs"
+        echo "  polygon-logs errors            # Show recent errors from all services"
         ;;
 esac
 LOGS_SCRIPT_EOF
 
-# Restart script
+# Enhanced restart script with validation
 print_status "Creating polygon-restart utility script..."
 sudo tee /usr/local/bin/polygon-restart > /dev/null <<'RESTART_SCRIPT_EOF'
 #!/bin/bash
+
+restart_service() {
+    local service=$1
+    local display_name=$2
+    
+    echo "Stopping $display_name..."
+    sudo systemctl stop $service
+    sleep 3
+    
+    echo "Starting $display_name..."
+    sudo systemctl start $service
+    sleep 5
+    
+    if systemctl is-active --quiet $service; then
+        echo "✅ $display_name restarted successfully"
+    else
+        echo "❌ $display_name failed to start"
+        echo "Check logs with: polygon-logs $service -e"
+    fi
+}
+
 case "$1" in
     "heimdall"|"h")
-        echo "Restarting Heimdall..."
-        sudo systemctl restart heimdalld
-        sleep 3
-        sudo systemctl status heimdalld --no-pager
+        restart_service "heimdalld" "Heimdall"
         ;;
     "rest"|"r")
-        echo "Restarting Heimdall REST..."
-        sudo systemctl restart heimdalld-rest
-        sleep 3
-        sudo systemctl status heimdalld-rest --no-pager
+        restart_service "heimdalld-rest" "Heimdall REST"
         ;;
     "bor"|"b")
-        echo "Restarting Bor..."
-        sudo systemctl restart bor
-        sleep 3
-        sudo systemctl status bor --no-pager
+        restart_service "bor" "Bor"
         ;;
     "all"|"a"|"")
-        echo "Restarting all Polygon services..."
-        sudo systemctl restart heimdalld
-        sleep 5
-        sudo systemctl restart heimdalld-rest
-        sleep 5
-        sudo systemctl restart bor
-        sleep 5
+        echo "Restarting all Polygon services in order..."
         echo ""
-        echo "=== Service Status ==="
-        sudo systemctl status heimdalld --no-pager | head -5
-        sudo systemctl status heimdalld-rest --no-pager | head -5
-        sudo systemctl status bor --no-pager | head -5
+        restart_service "heimdalld" "Heimdall"
+        echo ""
+        restart_service "heimdalld-rest" "Heimdall REST"
+        echo ""
+        restart_service "bor" "Bor"
+        echo ""
+        echo "=== Final Status Check ==="
+        polygon-status
         ;;
     *)
         echo "Usage: polygon-restart [heimdall|rest|bor|all]"
+        echo ""
         echo "Examples:"
-        echo "  polygon-restart all        # Restart all services"
+        echo "  polygon-restart all        # Restart all services in order"
         echo "  polygon-restart heimdall   # Restart only heimdall"
         echo "  polygon-restart bor        # Restart only bor"
         ;;
 esac
 RESTART_SCRIPT_EOF
 
-# Performance monitoring script
+# Enhanced monitoring script with better formatting
 print_status "Creating polygon-monitor utility script..."
 sudo tee /usr/local/bin/polygon-monitor > /dev/null <<'MONITOR_SCRIPT_EOF'
 #!/bin/bash
@@ -968,66 +1101,179 @@ while true; do
     echo "=== Polygon PoS Node Monitor - $(date) ==="
     echo ""
     
-    # Service status
+    # Service status with color coding
     echo "--- Services ---"
-    printf "Heimdall:     "
+    printf "%-15s " "Heimdall:"
     if systemctl is-active --quiet heimdalld; then
-        echo -e "\033[32mRunning\033[0m"
+        echo -e "\033[32m●\033[0m Running"
     else
-        echo -e "\033[31mStopped\033[0m"
+        echo -e "\033[31m●\033[0m Stopped"
     fi
     
-    printf "Heimdall REST: "
+    printf "%-15s " "Heimdall REST:"
     if systemctl is-active --quiet heimdalld-rest; then
-        echo -e "\033[32mRunning\033[0m"
+        echo -e "\033[32m●\033[0m Running"
     else
-        echo -e "\033[31mStopped\033[0m"
+        echo -e "\033[31m●\033[0m Stopped"
     fi
     
-    printf "Bor:          "
+    printf "%-15s " "Bor:"
     if systemctl is-active --quiet bor; then
-        echo -e "\033[32mRunning\033[0m"
+        echo -e "\033[32m●\033[0m Running"
     else
-        echo -e "\033[31mStopped\033[0m"
+        echo -e "\033[31m●\033[0m Stopped"
+    fi
+    echo ""
+    
+    # RPC Status
+    echo "--- RPC Status ---"
+    printf "%-15s " "Ethereum RPC:"
+    if curl -s -m 3 -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+        https://ethereum-rpc.publicnode.com > /dev/null 2>&1; then
+        echo -e "\033[32m●\033[0m Connected"
+    else
+        echo -e "\033[31m●\033[0m Failed"
+    fi
+    
+    printf "%-15s " "Local Bor RPC:"
+    if curl -s -m 3 -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+        http://localhost:8545 > /dev/null 2>&1; then
+        echo -e "\033[32m●\033[0m Ready"
+    else
+        echo -e "\033[31m●\033[0m Not Ready"
     fi
     echo ""
     
     # Sync status
     echo "--- Sync Status ---"
-    heimdall_status=$(curl -s localhost:26657/status 2>/dev/null)
+    heimdall_status=$(curl -s -m 3 localhost:26657/status 2>/dev/null)
     if [ $? -eq 0 ]; then
-        echo "Heimdall Latest Block: $(echo $heimdall_status | jq -r '.result.sync_info.latest_block_height' 2>/dev/null || echo 'N/A')"
-        echo "Heimdall Catching Up:  $(echo $heimdall_status | jq -r '.result.sync_info.catching_up' 2>/dev/null || echo 'N/A')"
+        latest_block=$(echo $heimdall_status | jq -r '.result.sync_info.latest_block_height' 2>/dev/null)
+        catching_up=$(echo $heimdall_status | jq -r '.result.sync_info.catching_up' 2>/dev/null)
+        printf "%-20s %s\n" "Heimdall Block:" "${latest_block:-'N/A'}"
+        printf "%-20s " "Catching Up:"
+        if [ "$catching_up" = "true" ]; then
+            echo -e "\033[33mYes\033[0m"
+        elif [ "$catching_up" = "false" ]; then
+            echo -e "\033[32mNo\033[0m"
+        else
+            echo "N/A"
+        fi
     else
         echo "Heimdall: RPC not ready"
     fi
     
-    bor_block=$(curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://localhost:8545 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        echo "Bor Latest Block:      $(echo $bor_block | jq -r '.result' 2>/dev/null || echo 'N/A')"
+    bor_block=$(curl -s -m 3 -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+        http://localhost:8545 2>/dev/null | jq -r '.result' 2>/dev/null)
+    if [ "$bor_block" != "null" ] && [ "$bor_block" != "" ]; then
+        bor_block_dec=$((16#${bor_block#0x}))
+        printf "%-20s %s\n" "Bor Block:" "$bor_block_dec"
     else
-        echo "Bor: RPC not ready"
+        echo "Bor Block:           Not ready"
     fi
     echo ""
     
-    # Peer counts
+    # Peer connections
     echo "--- Peer Connections ---"
-    heimdall_peers=$(curl -s localhost:26657/net_info 2>/dev/null | jq -r '.result.n_peers' 2>/dev/null)
-    echo "Heimdall Peers: ${heimdall_peers:-'N/A'}"
+    heimdall_peers=$(curl -s -m 3 localhost:26657/net_info 2>/dev/null | jq -r '.result.n_peers' 2>/dev/null)
+    printf "%-20s %s\n" "Heimdall Peers:" "${heimdall_peers:-'N/A'}"
     
-    bor_peers=$(curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' http://localhost:8545 2>/dev/null | jq -r '.result' 2>/dev/null)
-    echo "Bor Peers:      ${bor_peers:-'N/A'}"
+    bor_peers=$(curl -s -m 3 -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
+        http://localhost:8545 2>/dev/null | jq -r '.result' 2>/dev/null)
+    if [ "$bor_peers" != "null" ] && [ "$bor_peers" != "" ]; then
+        bor_peers_dec=$((16#${bor_peers#0x}))
+        printf "%-20s %s\n" "Bor Peers:" "$bor_peers_dec"
+    else
+        echo "Bor Peers:           N/A"
+    fi
     echo ""
     
     # System resources
     echo "--- System Resources ---"
-    echo "CPU Usage:     $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%"
-    echo "Memory Usage:  $(free | grep Mem | awk '{printf "%.1f%%", $3/$2 * 100.0}')"
-    echo "Disk Usage:    $(df /var/lib/polygon | tail -1 | awk '{print $5}')"
+    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    mem_usage=$(free | grep Mem | awk '{printf "%.1f%%", $3/$2 * 100.0}')
+    disk_usage=$(df /var/lib/polygon | tail -1 | awk '{print $5}')
     
+    printf "%-20s %s\n" "CPU Usage:" "${cpu_usage}%"
+    printf "%-20s %s\n" "Memory Usage:" "$mem_usage"
+    printf "%-20s %s\n" "Disk Usage:" "$disk_usage"
+    
+    echo ""
+    echo "Next update in 10 seconds... (Ctrl+C to exit)"
     sleep 10
 done
 MONITOR_SCRIPT_EOF
+
+# Network diagnostics script
+print_status "Creating polygon-network utility script..."
+sudo tee /usr/local/bin/polygon-network > /dev/null <<'NETWORK_SCRIPT_EOF'
+#!/bin/bash
+echo "=== Polygon Network Diagnostics ==="
+echo ""
+
+echo "--- External RPC Connectivity ---"
+echo "Testing Ethereum mainnet RPC..."
+if curl -s -m 10 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    https://ethereum-rpc.publicnode.com | jq .; then
+    echo "✅ Ethereum RPC working"
+else
+    echo "❌ Ethereum RPC failed"
+fi
+echo ""
+
+echo "Testing Polygon RPC..."
+if curl -s -m 10 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    https://polygon-rpc.com | jq .; then
+    echo "✅ Polygon RPC working"
+else
+    echo "❌ Polygon RPC failed"
+fi
+echo ""
+
+echo "--- Local Service Connectivity ---"
+echo "Testing Heimdall RPC..."
+if curl -s -m 5 localhost:26657/status | jq .result.sync_info; then
+    echo "✅ Heimdall RPC working"
+else
+    echo "❌ Heimdall RPC not responding"
+fi
+echo ""
+
+echo "Testing Heimdall REST..."
+if curl -s -m 5 localhost:1317/status | jq .; then
+    echo "✅ Heimdall REST working"
+else
+    echo "❌ Heimdall REST not responding"
+fi
+echo ""
+
+echo "Testing Bor RPC..."
+if curl -s -m 5 -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    http://localhost:8545 | jq .; then
+    echo "✅ Bor RPC working"
+else
+    echo "❌ Bor RPC not responding"
+fi
+echo ""
+
+echo "--- Port Status ---"
+echo "Checking open ports..."
+ss -tlnp | grep -E "(26656|26657|30303|8545|1317)" | while read line; do
+    echo "$line"
+done
+echo ""
+
+echo "--- Peer Information ---"
+echo "Heimdall peer details..."
+curl -s localhost:26657/net_info 2>/dev/null | jq '.result.peers[] | {id: .node_info.id, moniker: .node_info.moniker, remote_ip: .remote_ip}' 2>/dev/null || echo "No peer data available"
+NETWORK_SCRIPT_EOF
 
 # Make all scripts executable
 print_status "Making utility scripts executable..."
@@ -1035,7 +1281,8 @@ sudo chmod +x /usr/local/bin/polygon-status
 sudo chmod +x /usr/local/bin/polygon-logs
 sudo chmod +x /usr/local/bin/polygon-restart
 sudo chmod +x /usr/local/bin/polygon-monitor
-print_status "✅ Utility scripts created and made executable"
+sudo chmod +x /usr/local/bin/polygon-network
+print_status "✅ Enhanced utility scripts created"
 
 # Create log rotation
 print_status "Setting up log rotation..."
@@ -1049,7 +1296,7 @@ sudo tee /etc/logrotate.d/polygon > /dev/null <<'LOGROTATE_EOF'
     notifempty
     create 640 polygon polygon
     postrotate
-        systemctl reload heimdalld heimdalld-rest bor
+        systemctl reload heimdalld heimdalld-rest bor 2>/dev/null || true
     endscript
 }
 LOGROTATE_EOF
@@ -1063,70 +1310,107 @@ if systemctl is-active --quiet firewalld; then
     sudo firewall-cmd --permanent --add-port=8545/tcp   # Bor RPC
     sudo firewall-cmd --permanent --add-port=1317/tcp   # Heimdall REST
     sudo firewall-cmd --reload
+    print_status "✅ Firewall configured"
 fi
 
 # Enable and start services
 print_status "🚀 Starting Polygon PoS services..."
 sudo systemctl daemon-reload
 
-# Start services in order
+# Start services in order with proper dependencies
 sudo systemctl enable heimdalld
+print_status "Starting Heimdall..."
 sudo systemctl start heimdalld
-print_status "Heimdall started, waiting for initialization..."
-sleep 15
-
-sudo systemctl enable heimdalld-rest
-sudo systemctl start heimdalld-rest
-print_status "Heimdall REST started, waiting for initialization..."
-sleep 10
-
-sudo systemctl enable bor
-sudo systemctl start bor
-print_status "Bor started, waiting for initialization..."
 sleep 20
 
-# Final status check
-print_status "🔍 Checking service status..."
+# Check if Heimdall started successfully before proceeding
+if ! systemctl is-active --quiet heimdalld; then
+    print_warning "⚠️ Heimdall failed to start, checking logs..."
+    tail -20 /var/log/polygon/heimdalld.log
+    print_error "Installation may have issues. Check logs with: polygon-logs heimdall"
+fi
+
+sudo systemctl enable heimdalld-rest
+print_status "Starting Heimdall REST..."
+sudo systemctl start heimdalld-rest
+sleep 15
+
+# Check if REST API started
+if ! systemctl is-active --quiet heimdalld-rest; then
+    print_warning "⚠️ Heimdall REST failed to start, checking logs..."
+    tail -20 /var/log/polygon/heimdall-rest.log
+fi
+
+sudo systemctl enable bor
+print_status "Starting Bor..."
+sudo systemctl start bor
+sleep 25
+
+# Final comprehensive status check
+print_status "🔍 Running comprehensive status check..."
 if systemctl is-active --quiet heimdalld; then
     print_status "✅ Heimdall is running"
 else
-    print_warning "⚠️  Heimdall may still be starting"
+    print_warning "⚠️ Heimdall is not running properly"
 fi
 
 if systemctl is-active --quiet heimdalld-rest; then
     print_status "✅ Heimdall REST is running"
 else
-    print_warning "⚠️  Heimdall REST may still be starting"
+    print_warning "⚠️ Heimdall REST is not running properly"
 fi
 
 if systemctl is-active --quiet bor; then
     print_status "✅ Bor is running"
 else
-    print_warning "⚠️  Bor may still be starting"
+    print_warning "⚠️ Bor is not running properly"
 fi
+
+# Test RPC endpoints after startup
+print_status "🔗 Testing RPC connectivity after startup..."
+sleep 10
+test_rpc_endpoint "https://ethereum-rpc.publicnode.com" "External Ethereum RPC"
+test_rpc_endpoint "http://localhost:8545" "Local Bor RPC"
 
 print_status "🎉 Polygon PoS installation completed!"
 print_status ""
-print_status "=== Quick Commands ==="
-print_status "📊 Node status:     polygon-status"
-print_status "📋 View logs:       polygon-logs [heimdall|rest|bor|all] [-f]"
-print_status "🔄 Restart services: polygon-restart [heimdall|rest|bor|all]"
-print_status "📈 Live monitor:    polygon-monitor"
+print_status "=== 🚀 ENHANCED Quick Commands ==="
+print_status "📊 Node status:       polygon-status"
+print_status "📋 View logs:         polygon-logs [heimdall|rest|bor|all|errors] [-f|-e]"
+print_status "🔄 Restart services:  polygon-restart [heimdall|rest|bor|all]"
+print_status "📈 Live monitor:      polygon-monitor"
+print_status "🌐 Network tests:     polygon-network"
 print_status ""
-print_status "=== Service Management ==="
-print_status "📄 Check individual service: sudo systemctl status [heimdalld|heimdalld-rest|bor]"
-print_status "📜 View service logs:        sudo journalctl -u [heimdalld|heimdalld-rest|bor] -f"
+print_status "=== 🔧 Service Management ==="
+print_status "📄 Check services:       sudo systemctl status [heimdalld|heimdalld-rest|bor]"
+print_status "📜 Service logs:         sudo journalctl -u [service] -f"
+print_status "🔄 Manual restart:       sudo systemctl restart [service]"
 print_status ""
-print_status "=== Network Endpoints ==="
-print_status "🌐 Heimdall RPC:    http://localhost:26657"
-print_status "🌐 Heimdall REST:   http://localhost:1317"
-print_status "🌐 Bor RPC:         http://localhost:8545"
+print_status "=== 🌐 Network Endpoints ==="
+print_status "🌐 Heimdall RPC:      http://localhost:26657"
+print_status "🌐 Heimdall REST:     http://localhost:1317"  
+print_status "🌐 Bor RPC:           http://localhost:8545"
+print_status "🌐 External ETH RPC:  https://ethereum-rpc.publicnode.com"
 print_status ""
-print_status "=== Important Directories ==="
-print_status "📁 Data:      /var/lib/polygon/"
-print_status "📁 Logs:      /var/log/polygon/"
-print_status "📁 Config:    /var/lib/polygon/heimdall/config/ and /var/lib/polygon/bor/"
+print_status "=== 📁 Important Directories ==="
+print_status "📁 Data:             /var/lib/polygon/"
+print_status "📁 Logs:             /var/log/polygon/"
+print_status "📁 Heimdall Config:  /var/lib/polygon/heimdall/config/"
+print_status "📁 Bor Config:       /var/lib/polygon/bor/"
 print_status ""
-print_status "⏳ Initial sync will take several hours. Monitor progress with: polygon-monitor"
+print_status "=== 🔍 Troubleshooting ==="
+print_status "❌ View all errors:    polygon-logs errors"
+print_status "🔧 Network diagnostics: polygon-network"
+print_status "📊 Live monitoring:    polygon-monitor"
+print_status ""
+print_status "⚡ KEY FIXES APPLIED:"
+print_status "✅ Added external Ethereum RPC endpoint"
+print_status "✅ Configured state sync for faster initial sync"
+print_status "✅ Updated peer/bootnode addresses"
+print_status "✅ Enhanced error detection and logging"
+print_status "✅ Added comprehensive monitoring tools"
+print_status ""
+print_status "⏳ Initial sync will take several hours. Monitor with: polygon-monitor"
+print_status "🎯 The node should now sync properly without getting stuck!"
 print_status ""
 print_status "Installation completed at $(date)"
