@@ -616,12 +616,9 @@ if ! run_with_timeout 60 "Download Bor genesis" sudo -u polygon wget -q https://
     exit 1
 fi
 
-# Initialize Bor with genesis
-print_status "Initializing Bor with genesis file..."
-if ! run_with_timeout 120 "Initialize Bor" sudo -u polygon /usr/local/bin/bor --datadir /var/lib/polygon/bor init /var/lib/polygon/bor/genesis.json; then
-    print_error "Failed to initialize Bor with genesis"
-    exit 1
-fi
+# Note: Bor v1.5.5+ does not require genesis initialization
+# The genesis file is loaded directly when the server starts
+print_status "✅ Bor configuration completed (genesis initialization not required for v1.5.5+)"
 
 # Configure Bor with working bootnodes
 print_status "Configuring Bor with working bootnode connections..."
