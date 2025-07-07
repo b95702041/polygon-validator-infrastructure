@@ -114,7 +114,7 @@ curl -s -X POST -H "Content-Type: application/json" \
     http://localhost:8545
 
 # Use enhanced monitoring
-polygon-monitor
+polygon-status
 ```
 
 ## 🏗️ Architecture
@@ -290,25 +290,36 @@ polygon-status
 ✅ Peer Connections (6+ peers)
 ✅ Bor Status (RPC responding)
 
-# Live monitoring dashboard
-polygon-monitor
+# Live log monitoring
+polygon-logs
 === Real-time display ===
-● Services: Heimdall ✅, Bor ✅
-● Sync: Block height advancing
-● Peers: Connected count
-● Resources: CPU, Memory, Disk
-
-# Log analysis
-polygon-logs errors           # Show all errors
-polygon-logs heimdall -f      # Follow Heimdall logs
-polygon-logs all              # Recent logs from all services
+● Combined logs from all services
+● Color-coded by service type
+● Auto-refresh every few seconds
+● Filter by error level
 
 # Service management
-polygon-restart all           # Restart all services
-polygon-network              # Network diagnostics
+polygon-restart           # Restart all services if needed
 ```
 
-## 🔧 Troubleshooting - Issues RESOLVED
+## 🔧 Troubleshooting
+
+### Command Not Found After Installation
+
+If `polygon-status` shows "command not found" immediately after installation:
+
+```bash
+# Refresh your shell's command cache
+hash -r
+
+# Or start a new shell session
+exec bash
+
+# Then try again
+polygon-status
+```
+
+This is a common shell caching issue when new executables are added to PATH directories. The installation script places commands in `/usr/local/bin/` which is in your PATH, but your shell may not immediately recognize the new commands until the cache is refreshed.
 
 ### ✅ Previously Fixed Issues
 
